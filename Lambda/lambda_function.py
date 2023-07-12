@@ -2,6 +2,7 @@
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
+
 ### Functionality Helper Functions ###
 def parse_int(n):
     """
@@ -112,6 +113,35 @@ In this section, you will create an Amazon Lambda function that will validate th
 """
 
 
+def validate_data(first_name, age, investment_amount, risk_level, intent_request):
+    # if first_name is None:
+    #     return build_validation_result(False, "first_name", "First name is required")
+
+    if age is not None:
+        age = parse_int(age)
+        if age < 0 and age > 65:
+            return build_validation_result(False, "age", "Age must be between 0 and 65")
+
+    if investment_amount is not None:
+        investment_amount = parse_int(investment_amount)
+        if investment_amount > 5000:
+            return build_validation_result(
+                False,
+                "investmentAmount",
+                "Investment amount must be greater than zero.",
+            )
+
+    if risk_level is not None:
+        word = risk_level.lower()
+        choices = ["none", "low", "medium", "high"]
+        if word not in choices:
+            return build_validation_result(
+                False, "riskLevel", "Please input a correct risk level."
+            )
+
+    return build_validation_result(True, None, None)
+
+
 ### Intents Handlers ###
 def recommend_portfolio(intent_request):
     """
@@ -125,6 +155,52 @@ def recommend_portfolio(intent_request):
     source = intent_request["invocationSource"]
 
     # YOUR CODE GOES HERE!
+    if source == "DialogCodeHook":
+        # get all slots
+        slots = get_slots(intent_request)
+
+        # validate user input
+        validation_result = validate_data(
+            first_name, age, investment_amount, risk_level, intent_request
+        )
+
+        if not validation_result["isValid"]:
+            slots[validation_result["violatedSlot"]] = None
+
+            return elicit_slot(
+                intent_request["sessionAttributes"],
+                intent_request["currentIntent"]["name"],
+                slots,
+                validation_result["violatedSlot"],
+                validation_result["message"],
+            )
+
+        # get current attributes
+        output_session_attributes = intent_request["sessionAttributes"]
+
+        # If all is ok, return to lex to choose next actions
+        return delegate(output_session_attributes, get_slots(intent_request))
+
+    # investment recommendation map
+    investment_recommendations = {
+        "none": "100% bonds (AGG), 0% equities (SPY)",
+        "low": "60% bonds (AGG), 40% equities (SPY)",
+        "medium": "40% bonds (AGG), 60% equities (SPY)",
+        "high": "20% bonds (AGG), 80% equities (SPY)",
+    }
+
+    return close(
+        intent_request["sessionAttributes"],
+        "Fulfilled",
+        {
+            "contentType": "PlainText",
+            "content": """Thank you for your information;
+            you result are as follows: {} .
+            """.format(
+                investment_recommendations[risk_level.lower()],
+            ),
+        },
+    )
 
 
 ### Intents Dispatcher ###
